@@ -41,7 +41,11 @@ contract ProposalContract {
     address[] private voted_addresses;
 
     function setOwner(address new_owner) external onlyOwner {
+        require(new_owner != address(0), "Owner cannot be the zero address");
         owner = new_owner;
+        if (!isVoted(new_owner)) {
+            voted_addresses.push(new_owner);
+        }
     }
 
     function create(
@@ -49,6 +53,9 @@ contract ProposalContract {
         string calldata _description,
         uint256 _total_vote_to_end
     ) external onlyOwner {
+        require(_total_vote_to_end > 0, "Vote limit must be greater than zero");
+        delete voted_addresses;
+        voted_addresses.push(owner);
         counter += 1;
         proposal_history[counter] = Proposal(
             _title,
@@ -63,8 +70,9 @@ contract ProposalContract {
     }
 
     function vote(uint8 choice) external active newVoter(msg.sender) {
+        require(choice <= 2, "Invalid vote choice");
+
         Proposal storage proposal = proposal_history[counter];
-        uint256 total_vote = proposal.approve + proposal.reject + proposal.pass;
 
         voted_addresses.push(msg.sender);
 
@@ -79,10 +87,32 @@ contract ProposalContract {
             proposal.current_state = calculateCurrentState();
         }
 
-        if ((proposal.total_vote_to_end - total_vote == 1) && (choice == 1 || choice == 2 || choice == 0)) {
+        uint256 totalVotes = proposal.approve + proposal.reject + proposal.pass;
+        if (totalVotes >= proposal.total_vote_to_end) {
             proposal.is_active = false;
             voted_addresses = [owner];
         }
+    }
+
+    function terminateProposal() external onlyOwner active {
+        proposal_history[counter].is_active = false;
+    }
+
+    function isVoted(address _address) public view returns (bool) {
+        for (uint256 i = 0; i < voted_addresses.length; i++) {
+            if (voted_addresses[i] == _address) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function getCurrentProposal() external view returns (Proposal memory) {
+        return proposal_history[counter];
+    }
+
+    function getProposal(uint256 number) external view returns (Proposal memory) {
+        return proposal_history[number];
     }
 
     function calculateCurrentState() private view returns (bool) {
